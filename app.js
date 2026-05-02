@@ -13,8 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const previewPanel = document.getElementById('preview-panel');
     const sheetPreview = document.getElementById('sheet-preview');
     const printTbody = document.getElementById('print-tbody');
-    const apiKeyInput = document.getElementById('gemini-api-key');
-    const saveApiKeyBtn = document.getElementById('save-api-key-btn');
     const extractErrorMsg = document.getElementById('extract-error-msg');
 
     let performers = [];
@@ -31,36 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
              .replace(/"/g, "&quot;")
              .replace(/'/g, "&#039;");
     }
-
-    if (apiKey) {
-        apiKeyInput.value = apiKey;
-    }
-
-    saveApiKeyBtn.addEventListener('click', () => {
-        // Strip everything except valid Base64 / API key characters
-        let key = apiKeyInput.value.replace(/[^a-zA-Z0-9_-]/g, '');
-        apiKeyInput.value = key; // Show cleaned key to user
-        
-        if (key) {
-            localStorage.setItem('tally-sheet-maker-gemini-key', key);
-            apiKey = key;
-            saveApiKeyBtn.textContent = '保存済み ✓';
-            saveApiKeyBtn.style.backgroundColor = '#10b981';
-            saveApiKeyBtn.style.color = 'white';
-            setTimeout(() => {
-                saveApiKeyBtn.textContent = '保存';
-                saveApiKeyBtn.style.backgroundColor = '';
-                saveApiKeyBtn.style.color = '';
-            }, 2000);
-        } else {
-            localStorage.removeItem('tally-sheet-maker-gemini-key');
-            apiKey = '';
-            saveApiKeyBtn.textContent = '削除しました';
-            setTimeout(() => {
-                saveApiKeyBtn.textContent = '保存';
-            }, 2000);
-        }
-    });
     
     function initCropper(imageSrc) {
         document.querySelector('.crop-container').innerHTML = '<img id="cropper-image" src="">';
@@ -145,15 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!cropper) {
             extractErrorMsg.textContent = 'ファイルが正しく読み込まれていません。再度ファイルを選択してください。';
             return;
-        }
-
-        // Always grab the latest value from the input field just in case the user forgot to click 'Save'
-        const currentInputValue = apiKeyInput.value.replace(/[^a-zA-Z0-9_-]/g, '');
-        if (currentInputValue) {
-            apiKey = currentInputValue;
-            localStorage.setItem('tally-sheet-maker-gemini-key', apiKey);
-            saveApiKeyBtn.textContent = '保存済み ✓';
-            saveApiKeyBtn.classList.add('saved');
         }
 
         if (!apiKey) {
