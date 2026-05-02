@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>演者入場者カウントシート作成</title>
+    <link rel="stylesheet" href="style.css?v=26">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Cropper.js CDN -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+
+    <!-- jsPDF & html2canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- pdf.js for rendering PDFs to images -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+    <div class="app-container no-print">
+        <header>
+            <h1>演者入場者カウントシート作成</h1>
+            <p>フライヤー画像をアップロードして、A4サイズの「正の字」記入用シートを作成します。</p>
+        </header>
+
+        <main>
+            <div class="controls-panel">
+                <div class="api-key-section">
+                    <label for="gemini-api-key" style="font-size: 0.875rem; font-weight: 500;">Gemini API Key</label>
+                    <div class="api-key-input-group">
+                        <input type="password" id="gemini-api-key" placeholder="AIzaSy..." autocomplete="off">
+                        <button id="save-api-key-btn" class="secondary-btn">保存</button>
+                    </div>
+                    <p class="help-text" style="font-size: 0.75rem; margin-top: 0.25rem; margin-bottom: 1.5rem;">※キーはブラウザにのみ保存されます</p>
+                </div>
+
+                <div class="upload-section">
+                    <label for="image-upload" class="upload-btn">
+                        フライヤー画像 または PDF を選択
+                        <input type="file" id="image-upload" accept="image/*,application/pdf">
+                    </label>
+                    <p class="file-name" id="file-name">選択されていません</p>
+                </div>
+
+                <div class="loading-state hidden" id="loading-state">
+                    <div class="spinner"></div>
+                    <p id="loading-text">文字を認識しています...</p>
+                </div>
+
+                <div class="crop-section hidden" id="crop-section">
+                    <h3>読み取る範囲を選択</h3>
+                    <p class="help-text">画像上の文字がある範囲をドラッグして囲んでください。</p>
+                    <div class="crop-container">
+                        <img id="cropper-image" src="">
+                    </div>
+                    <p id="extract-error-msg" class="error-text" style="color: red; font-size: 0.875rem; margin-bottom: 0.5rem;"></p>
+                    <button id="extract-btn" class="primary-btn" style="margin-top: 1rem;">選択範囲を読み取る</button>
+                </div>
+
+                <div class="edit-section hidden" id="edit-section">
+                    <h3>読み取った演者名</h3>
+                    <p class="help-text">不要な行を削除したり、修正・追加してください。</p>
+                    <div id="performer-list" class="performer-list">
+                        <!-- Items injected by JS -->
+                    </div>
+                    <div class="add-performer">
+                        <input type="text" id="new-performer-input" placeholder="新しい演者名">
+                        <button id="add-performer-btn">追加</button>
+                    </div>
+                </div>
+
+                <div class="actions-section">
+                    <button id="print-btn" class="primary-btn hidden">
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        PDFを保存...
+                    </button>
+                </div>
+            </div>
+
+            <div class="preview-panel hidden" id="preview-panel">
+                <h3>プレビュー</h3>
+                <div class="sheet-preview-container">
+                    <div class="sheet-preview" id="sheet-preview">
+                        <!-- Preview injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Print Layout (Hidden on screen, shown on print) -->
+    <div class="print-layout" id="print-layout">
+        <div class="tally-table-container">
+            <table class="tally-table" style="table-layout: fixed;">
+                <colgroup>
+                    <col style="width: 5%;">
+                    <col style="width: 20%;">
+                    <col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;">
+                    <col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;">
+                    <col style="width: 10%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>順番</th>
+                        <th>演者名</th>
+                        <th colspan="10">入場者数カウント (正の字)</th>
+                        <th>合計</th>
+                    </tr>
+                </thead>
+                <tbody id="print-tbody">
+                    <!-- Rows injected by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="app.js?v=25"></script>
+</body>
+</html>

@@ -1,0 +1,390 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const imageUpload = document.getElementById('image-upload');
+    const fileNameDisplay = document.getElementById('file-name');
+    const loadingState = document.getElementById('loading-state');
+    const cropSection = document.getElementById('crop-section');
+    const cropperImage = document.getElementById('cropper-image');
+    const extractBtn = document.getElementById('extract-btn');
+    const editSection = document.getElementById('edit-section');
+    const performerList = document.getElementById('performer-list');
+    const newPerformerInput = document.getElementById('new-performer-input');
+    const addPerformerBtn = document.getElementById('add-performer-btn');
+    const printBtn = document.getElementById('print-btn');
+    const previewPanel = document.getElementById('preview-panel');
+    const sheetPreview = document.getElementById('sheet-preview');
+    const printTbody = document.getElementById('print-tbody');
+    const apiKeyInput = document.getElementById('gemini-api-key');
+    const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+    const extractErrorMsg = document.getElementById('extract-error-msg');
+
+    let performers = [];
+    let cropper = null;
+    let apiKey = localStorage.getItem('tally-sheet-maker-gemini-key') || '';
+    
+    function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return unsafe
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+    if (apiKey) {
+        apiKeyInput.value = apiKey;
+    }
+
+    saveApiKeyBtn.addEventListener('click', () => {
+        // Strip everything except valid Base64 / API key characters
+        let key = apiKeyInput.value.replace(/[^a-zA-Z0-9_-]/g, '');
+        apiKeyInput.value = key; // Show cleaned key to user
+        
+        if (key) {
+            localStorage.setItem('tally-sheet-maker-gemini-key', key);
+            apiKey = key;
+            saveApiKeyBtn.textContent = '保存済み ✓';
+            saveApiKeyBtn.style.backgroundColor = '#10b981';
+            saveApiKeyBtn.style.color = 'white';
+            setTimeout(() => {
+                saveApiKeyBtn.textContent = '保存';
+                saveApiKeyBtn.style.backgroundColor = '';
+                saveApiKeyBtn.style.color = '';
+            }, 2000);
+        } else {
+            localStorage.removeItem('tally-sheet-maker-gemini-key');
+            apiKey = '';
+            saveApiKeyBtn.textContent = '削除しました';
+            setTimeout(() => {
+                saveApiKeyBtn.textContent = '保存';
+            }, 2000);
+        }
+    });
+    
+    function initCropper(imageSrc) {
+        document.querySelector('.crop-container').innerHTML = '<img id="cropper-image" src="">';
+        const newCropperImage = document.getElementById('cropper-image');
+        newCropperImage.src = imageSrc;
+        cropSection.classList.remove('hidden');
+        
+        cropper = new Cropper(newCropperImage, {
+            viewMode: 1,
+            dragMode: 'crop',
+            autoCropArea: 0.8,
+            restore: false,
+            guides: true,
+            center: true,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: true,
+            zoomOnWheel: false,
+            zoomOnTouch: false,
+        });
+    }
+
+    imageUpload.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        fileNameDisplay.textContent = file.name;
+        
+        // Hide previous UI states
+        editSection.classList.add('hidden');
+        previewPanel.classList.add('hidden');
+        printBtn.classList.add('hidden');
+        
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+
+        if (file.type === 'application/pdf') {
+            document.querySelector('.crop-container').innerHTML = '<div style="padding: 3rem 1rem; text-align: center; color: #4b5563;">PDFを画像に変換しています...</div>';
+            cropSection.classList.remove('hidden');
+
+            try {
+                if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                }
+
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const page = await pdf.getPage(1); // Read first page
+                const viewport = page.getViewport({ scale: 2.0 }); // High quality
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                }).promise;
+
+                const imgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                initCropper(imgDataUrl);
+            } catch (error) {
+                console.error('PDF rendering error:', error);
+                document.querySelector('.crop-container').innerHTML = '<div style="padding: 3rem 1rem; text-align: center; color: #ef4444;">PDFの読み込みに失敗しました。</div>';
+            }
+        } else {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                initCropper(reader.result);
+            };
+        }
+    });
+
+    extractBtn.addEventListener('click', async () => {
+        extractErrorMsg.textContent = ''; // Clear previous errors
+        
+        if (!cropper) {
+            extractErrorMsg.textContent = 'ファイルが正しく読み込まれていません。再度ファイルを選択してください。';
+            return;
+        }
+
+        // Always grab the latest value from the input field just in case the user forgot to click 'Save'
+        const currentInputValue = apiKeyInput.value.replace(/[^a-zA-Z0-9_-]/g, '');
+        if (currentInputValue) {
+            apiKey = currentInputValue;
+            localStorage.setItem('tally-sheet-maker-gemini-key', apiKey);
+            saveApiKeyBtn.textContent = '保存済み ✓';
+            saveApiKeyBtn.classList.add('saved');
+        }
+
+        if (!apiKey) {
+            extractErrorMsg.textContent = 'Gemini API Key を入力してください。';
+            return;
+        }
+
+        // Show loading
+        cropSection.classList.add('hidden');
+        loadingState.classList.remove('hidden');
+        document.getElementById('loading-text').textContent = 'AIで文字を認識しています...';
+
+        try {
+            const canvas = cropper.getCroppedCanvas();
+            const base64Data = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            parts: [
+                                { text: "あなたはプロの音楽関係者です。アップロードされた資料（フライヤー画像またはPDF文書）から、出演するバンドやアーティストの名前を可能な限り正確に抽出してください。\n\n【ルール】\n1. アーティスト名・バンド名・演者名だけを抽出すること。\n2. 日付、時間、場所、チケット料金、主催者名、「出演」「Guest」「DJ」などの肩書き、その他関係ない情報は絶対に含めないこと。\n3. 抽出した名前は1行に1組ずつ出力すること。箇条書きの記号（1. や ・ など）は付けないこと。\n4. 独特なフォントやロゴデザインであっても丁寧に読み取ること。\n\n出力は抽出した名前のリスト（各行1組）のみにしてください。" },
+                                {
+                                    inline_data: {
+                                        mime_type: "image/jpeg",
+                                        data: base64Data
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: 0.0
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || 'API request failed');
+            }
+
+            const result = await response.json();
+            let text = '';
+            if (result.candidates && result.candidates.length > 0) {
+                text = result.candidates[0].content.parts[0].text;
+            }
+
+            // Process Text
+            performers = text.split('\n')
+                             .map(line => line.trim())
+                             .map(line => line.replace(/^[\-\*・\d\.．]+\s*/, ''))
+                             .filter(line => line.length > 0);
+
+            // Show Editor
+            loadingState.classList.add('hidden');
+            
+            renderEditor();
+            editSection.classList.remove('hidden');
+            previewPanel.classList.remove('hidden');
+            printBtn.classList.remove('hidden');
+
+        } catch (error) {
+            console.error("Gemini API Error:", error);
+            extractErrorMsg.textContent = "画像からの読み取りに失敗しました。APIキーが正しいか確認してください。詳細: " + error.message;
+            loadingState.classList.add('hidden');
+            cropSection.classList.remove('hidden');
+        }
+    });
+
+    function renderEditor() {
+        performerList.innerHTML = '';
+        performers.forEach((name, index) => {
+            const item = document.createElement('div');
+            item.className = 'performer-item';
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = name;
+            input.addEventListener('change', (e) => {
+                performers[index] = e.target.value;
+                updatePreviewAndPrint();
+            });
+
+            const delBtn = document.createElement('button');
+            delBtn.innerHTML = '✕';
+            delBtn.title = '削除';
+            delBtn.addEventListener('click', () => {
+                performers.splice(index, 1);
+                renderEditor();
+            });
+
+            item.appendChild(input);
+            item.appendChild(delBtn);
+            performerList.appendChild(item);
+        });
+
+        updatePreviewAndPrint();
+    }
+
+    addPerformerBtn.addEventListener('click', () => {
+        const name = newPerformerInput.value.trim();
+        if (name) {
+            performers.push(name);
+            newPerformerInput.value = '';
+            renderEditor();
+        }
+    });
+
+    newPerformerInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            addPerformerBtn.click();
+        }
+    });
+
+    function updatePreviewAndPrint() {
+        // Filter out empty names
+        const validPerformers = performers.filter(p => p.trim() !== '');
+
+        function getFontSizeStyle(name) {
+            let visualLength = 0;
+            for (let i = 0; i < name.length; i++) {
+                // Japanese characters, full width alphanumerics, etc. are counted as 1
+                // Standard ascii is counted as 0.6
+                visualLength += name.charCodeAt(i) > 255 ? 1 : 0.6;
+            }
+            
+            let fontSize = 16; // default max font size
+            // If it exceeds ~9 visual characters, scale down
+            if (visualLength > 9) {
+                // scale down proportionally, but cap at minimum 9px to remain readable
+                fontSize = Math.max(9, 16 * (9 / visualLength));
+            }
+            
+            return `font-size: ${fontSize}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; box-sizing: border-box;`;
+        }
+
+        // 1. Update Preview Panel (Miniature view on screen)
+        let previewHtml = '<table style="table-layout: fixed;"><colgroup><col style="width: 5%;"><col style="width: 20%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 6.5%;"><col style="width: 10%;"></colgroup><thead><tr><th>順番</th><th>演者名</th><th colspan="10">カウント</th><th>合計</th></tr></thead><tbody>';
+        validPerformers.forEach((name, index) => {
+            const fontStyle = getFontSizeStyle(name);
+            previewHtml += `<tr><td class="no-cell" style="text-align: center; font-weight: bold;">${index + 1}</td><td class="name-cell"><div style="${fontStyle}">${escapeHtml(name)}</div></td>`;
+            for (let i = 0; i < 10; i++) {
+                previewHtml += `<td class="tally-box"></td>`;
+            }
+            previewHtml += `<td class="total-box"></td></tr>`;
+        });
+        previewHtml += '</tbody></table>';
+        sheetPreview.innerHTML = previewHtml;
+
+        // 2. Update Real Print Layout
+        let printHtml = '';
+        validPerformers.forEach((name, index) => {
+            const fontStyle = getFontSizeStyle(name);
+            printHtml += `<tr><td class="no-cell" style="text-align: center; font-weight: bold;">${index + 1}</td><td class="name-cell"><div style="${fontStyle}">${escapeHtml(name)}</div></td>`;
+            for (let i = 0; i < 10; i++) {
+                printHtml += `<td class="tally-box"></td>`;
+            }
+            printHtml += `<td class="total-box"></td></tr>`;
+        });
+        printTbody.innerHTML = printHtml;
+    }
+
+    printBtn.addEventListener('click', async () => {
+        const printLayout = document.getElementById('print-layout');
+
+        try {
+            printBtn.textContent = 'PDF生成中...';
+            printBtn.disabled = true;
+
+            // Show element off-screen
+            printLayout.classList.add('active-for-pdf');
+            
+            // Short delay to ensure DOM is fully rendered
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Snap a picture of the layout
+            const canvas = await html2canvas(printLayout, { 
+                scale: 2, 
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+            
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            
+            // Create A4 PDF (210mm x 297mm)
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            
+            // Mathematically scale the image to fit EXACTLY on one page
+            const ratio = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height);
+            const imgWidth = canvas.width * ratio;
+            const imgHeight = canvas.height * ratio;
+            
+            // Center horizontally, stick to top
+            const x = (pdfWidth - imgWidth) / 2;
+            const y = 0;
+            
+            pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
+            
+            if (window.showSaveFilePicker) {
+                const pdfBlob = pdf.output('blob');
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'tally_sheet.pdf',
+                        types: [{
+                            description: 'PDF Document',
+                            accept: {'application/pdf': ['.pdf']},
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(pdfBlob);
+                    await writable.close();
+                } catch (e) {
+                    if (e.name !== 'AbortError') throw e;
+                }
+            } else {
+                pdf.save('tally_sheet.pdf');
+            }
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            alert('PDFの保存に失敗しました。');
+        } finally {
+            printLayout.classList.remove('active-for-pdf'); // Hide again
+            printBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1-2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> PDFを保存...';
+            printBtn.disabled = false;
+        }
+    });
+});
