@@ -19,7 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let performers = [];
     let cropper = null;
-    let apiKey = localStorage.getItem('tally-sheet-maker-gemini-key') || '';
+    // Set the provided API key as the default fallback so it can be reused automatically across all devices
+    let apiKey = localStorage.getItem('tally-sheet-maker-gemini-key') || 'AIzaSyCLTNIbLIsRQPUpQiP93aaoQkVjfqkBJ3c';
     
     function escapeHtml(unsafe) {
         if (!unsafe) return '';
