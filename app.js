@@ -14,11 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const sheetPreview = document.getElementById('sheet-preview');
     const printTbody = document.getElementById('print-tbody');
     const extractErrorMsg = document.getElementById('extract-error-msg');
-
     let performers = [];
     let cropper = null;
-    // Set the provided API key as the default fallback so it can be reused automatically across all devices
-    let apiKey = localStorage.getItem('tally-sheet-maker-gemini-key') || 'AIzaSyCLTNIbLIsRQPUpQiP93aaoQkVjfqkBJ3c';
     
     function escapeHtml(unsafe) {
         if (!unsafe) return '';
@@ -115,10 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (!apiKey) {
-            extractErrorMsg.textContent = 'Gemini API Key を入力してください。';
-            return;
-        }
 
         // Show loading
         cropSection.classList.add('hidden');
@@ -129,28 +122,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const canvas = cropper.getCroppedCanvas();
             const base64Data = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
 
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [
-                                { text: "あなたはプロの音楽関係者です。アップロードされた資料（フライヤー画像またはPDF文書）から、出演するバンドやアーティストの名前を可能な限り正確に抽出してください。\n\n【ルール】\n1. アーティスト名・バンド名・演者名だけを抽出すること。\n2. 日付、時間、場所、チケット料金、主催者名、「出演」「Guest」「DJ」などの肩書き、その他関係ない情報は絶対に含めないこと。\n3. 抽出した名前は1行に1組ずつ出力すること。箇条書きの記号（1. や ・ など）は付けないこと。\n4. 独特なフォントやロゴデザインであっても丁寧に読み取ること。\n\n出力は抽出した名前のリスト（各行1組）のみにしてください。" },
-                                {
-                                    inline_data: {
-                                        mime_type: "image/jpeg",
-                                        data: base64Data
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        temperature: 0.0
-                    }
+                    imageBase64: base64Data
                 })
             });
 
