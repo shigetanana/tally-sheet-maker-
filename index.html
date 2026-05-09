@@ -63,6 +63,13 @@
                         <input type="text" id="new-performer-input" placeholder="新しい演者名">
                         <button id="add-performer-btn">追加</button>
                     </div>
+                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                        <h4 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: var(--text-secondary);">カンマ区切りテキスト (SNS・告知コピペ用)</h4>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <textarea id="csv-output" readonly style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.875rem; background-color: #f9fafb; resize: vertical; min-height: 40px;"></textarea>
+                            <button id="copy-csv-btn" class="secondary-btn" style="white-space: nowrap; height: fit-content;">コピー</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="actions-section">

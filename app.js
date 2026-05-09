@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const sheetPreview = document.getElementById('sheet-preview');
     const printTbody = document.getElementById('print-tbody');
     const extractErrorMsg = document.getElementById('extract-error-msg');
+    const csvOutput = document.getElementById('csv-output');
+    const copyCsvBtn = document.getElementById('copy-csv-btn');
     let performers = [];
     let cropper = null;
     
@@ -210,26 +212,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    if (copyCsvBtn && csvOutput) {
+        copyCsvBtn.addEventListener('click', () => {
+            csvOutput.select();
+            document.execCommand('copy');
+            const originalText = copyCsvBtn.textContent;
+            copyCsvBtn.textContent = 'コピー完了!';
+            setTimeout(() => {
+                copyCsvBtn.textContent = originalText;
+            }, 2000);
+        });
+    }
+
     function updatePreviewAndPrint() {
         // Filter out empty names
         const validPerformers = performers.filter(p => p.trim() !== '');
 
         function getFontSizeStyle(name) {
-            let visualLength = 0;
-            for (let i = 0; i < name.length; i++) {
-                // Japanese characters, full width alphanumerics, etc. are counted as 1
-                // Standard ascii is counted as 0.6
-                visualLength += name.charCodeAt(i) > 255 ? 1 : 0.6;
-            }
-            
-            let fontSize = 16; // default max font size
-            // If it exceeds ~9 visual characters, scale down
-            if (visualLength > 9) {
-                // scale down proportionally, but cap at minimum 9px to remain readable
-                fontSize = Math.max(9, 16 * (9 / visualLength));
-            }
-            
-            return `font-size: ${fontSize}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; box-sizing: border-box;`;
+            // 固定のフォントサイズで、長い場合は折り返して全体を表示する
+            return `font-size: 14px; white-space: normal; word-break: break-word; line-height: 1.2; width: 100%; box-sizing: border-box;`;
         }
 
         // 1. Update Preview Panel (Miniature view on screen)
@@ -244,6 +245,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         previewHtml += '</tbody></table>';
         sheetPreview.innerHTML = previewHtml;
+
+        if (csvOutput) {
+            csvOutput.value = validPerformers.join(', ');
+        }
 
         // 2. Update Real Print Layout
         let printHtml = '';
